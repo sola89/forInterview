@@ -1,0 +1,189 @@
+import axios from 'axios';
+import qs from 'qs';
+import {
+    CLEAR_ACCOUNT_INFORMATION,
+    SET_ACCOUNT_INFORMATION,
+    SET_LOGGED_IN,
+    SET_LOGGED_OUT,
+    SET_UNITS_LIST,
+} from './mutations-types';
+import { LOGIN_REQUEST, LOGOUT_REQUEST, CLEAR_DATA_USER, UPDATE_UNITS_LIST, EDIT_UNITS_LIST } from './action-types';
+
+const state = {
+    // Признак, аутентифицирован пользователь или нет.
+    authenticated: false,
+    token: null,
+    // Информация о пользователе.
+    account: {
+        user: {
+            name: null,
+            id: null,
+            roles: [],
+            allowedRoutes: [],
+        }
+    },
+    // Список подразделений
+    units: [],
+};
+
+const getters = {
+    /**
+     * Возвращает информацию аутентифицирован пользователь или нет.
+     * @param state Состояние.
+     * @returns {boolean}
+     */
+    isAuthenticatedUser: state => state.authenticated,
+    /**
+     * Возвращает информацию о пользователе.
+     * @param state Состояние.
+     * @returns {Object}
+     */
+    user: state => state.account.user,
+
+    token: state => state.token,
+
+    units: state => state.units,
+};
+
+const actions = {
+    /**
+     * Аутентификация пользователя.
+     * @param commit Запуск мутаций.
+     * @param credentials Данные для входа (логин и пароль).
+     * @returns {Promise<any>}
+     */
+    [LOGIN_REQUEST]: ({ commit }, credentials) => new Promise((resolve, reject) => {
+        // Пробуем аутентифицировать пользователя.
+        axios.post('/api/login_check', {
+            username: credentials.username,
+            password: credentials.password,
+        }).then((response) => {
+            const token = response.data.token;
+            axios.get('/api/lk/get_user_rigths').then((response) => {
+                if (response.data.rez) {
+                    const user = response.data.user;
+                    if (user && user.employee) {
+                        commit(SET_ACCOUNT_INFORMATION, {
+                            user: {
+                                id: user.id,
+                                name: user.employee.name,
+                                roles: user.roles,
+                                cabinet: user.employee.cabinet,
+                                email: user.employee.email,
+                                phone: user.employee.phone,
+                                extPhone: user.employee.extPhone,
+                                position: user.employee.position,
+                                unit: user.employee.unit.title,
+                                unitId: user.employee.unit.id,
+                                photo: user.employee.photo,
+                                employeeId: user.employee.id
+                            },
+                        });
+                        commit(SET_LOGGED_IN, token);
+                        resolve({rez: true});
+                    } else {
+                        reject('Не удалось запросить права');
+                    }
+                } else {
+                    reject(new Error(response.data.msg || 'Не удалось запросить права'));
+                }
+            }).catch((error) => {
+                console.log(error);
+                reject('Не удалось запросить права')
+            });
+        }).catch((error) => {
+            resolve({rez: false, msg: 'Неверный логин или пароль'})
+        });
+    }),
+    /**
+     * Выход из системы.
+     * @param commit Запуск мутаций.
+     * @returns {Promise<any>}
+     */
+    [LOGOUT_REQUEST]: ({ commit }) => new Promise((resolve, reject) => {
+        // Сообщаем бэкенду о выходе из системы.
+        axios.post('/api/logout').then((response) => {
+            // Если пользователь успешно вышел, то удаляем данные об аккаунте в хранилище.
+            if (response.data.success) {
+                commit(CLEAR_ACCOUNT_INFORMATION);
+                commit(SET_LOGGED_OUT);
+                commit(SET_UNITS_LIST, []);
+                resolve();
+            // Иначе, возвращаем вернувшееся сообщение об ошибке.
+            } else {
+                reject(new Error(response.data.msg));
+            }
+        // Обработка ошибки отправки запроса.
+        }).catch(() => reject(new Error('Не удалось выполнить запрос к серверу.')));
+    }),
+    /**
+     * Выход из системы без запроса к серверу
+     * @param commit Запуск мутаций.
+     * @returns {Promise<any>}
+     */
+    [CLEAR_DATA_USER]: ({ commit }) => new Promise((resolve, reject) => {
+        commit(CLEAR_ACCOUNT_INFORMATION);
+        commit(SET_LOGGED_OUT);
+        commit(SET_UNITS_LIST, []);
+        resolve();
+    }),
+
+    /**
+     * Обновление списка подразделений
+     * @param commit Запуск мутации
+     * @returns {Promise<any>}
+     */
+    [UPDATE_UNITS_LIST]: ({ commit }) => new Promise((resolve, reject) => {
+        // Пробуем аутентифицировать пользователя.
+        axios.get('/api/v1/units?limit=1000').then((response) => {
+            commit(SET_UNITS_LIST, response.data.units);
+            resolve(response.data.units);
+        }).catch((error) => {
+            reject('Не удалось обновить список подразделений: ' + error.response.data.message)
+        });
+    }),
+
+    [EDIT_UNITS_LIST]: ({ commit }, units) => new Promise((resolve, reject) => {
+        commit(SET_UNITS_LIST, units);
+        resolve();
+    }),
+};
+
+const mutations = {
+    /**
+     * Очищает данные об аккаунте пользователя.
+     * @param state Состояние.
+     */
+    [CLEAR_ACCOUNT_INFORMATION]: state => {
+        state.account = {
+            user: {
+                name: null,
+                id: null,
+                roles: [],
+            },
+        };
+    },
+    /**
+     * Отмечает пользователя как аутентифицированного.
+     * @param state Состояние.
+     */
+    [SET_LOGGED_IN]: (state, token) => {
+        state.authenticated = true;
+        state.token = token
+    },
+    /**
+     * Убирает отметку аутентифицированного пользователя.
+     * @param state Состояние.
+     */
+    [SET_LOGGED_OUT]: state => {
+        state.authenticated = false;
+        state.token = null;
+    },
+};
+
+export default {
+    state,
+    getters,
+    actions,
+    mutations,
+};
