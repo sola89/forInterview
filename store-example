@@ -1,0 +1,16 @@
+import Vue from 'vue';
+import Vuex from 'vuex';
+import createPersistedState from 'vuex-persistedstate';
+import auth from './modules/auth/auth';
+import applicationFormGroup from "./modules/applicationFormGroup/applicationFormGroup";
+import { loader } from './modules/loader';
+
+Vue.use(Vuex);
+
+export default new Vuex.Store({
+    plugins: [createPersistedState()],
+    state: {},
+    modules: { auth, loader, applicationFormGroup, },
+});
+
+//createPersistedState - для хранения в vuex данных с привязкой к localstorage, чтобы данные сохранялись даже после перезагрузки страницы 
